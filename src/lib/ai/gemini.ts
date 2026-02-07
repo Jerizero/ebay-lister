@@ -13,7 +13,7 @@ export function getVisionModel() {
   if (!genAI) {
     throw new Error('Gemini API key not configured');
   }
-  return genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+  return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 }
 
 // Convert base64 string to Gemini format
