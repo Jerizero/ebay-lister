@@ -1,0 +1,77 @@
+{
+  "project": "ebay-lister",
+  "description": "AI-powered bulk eBay listing creation using Gemini Vision",
+  "lastUpdated": "2026-02-07",
+  "currentState": "refactoring-complete",
+  "recentWork": {
+    "session": "2026-02-07",
+    "summary": "Full refactoring: decomposed god component, removed dead code, added production fixes",
+    "commits": [
+      "13578e8 - refactor: decompose god component and remove dead code",
+      "4f11719 - fix: revert Gemini model to gemini-2.5-flash"
+    ],
+    "changesCompleted": [
+      "Phase 1: Deleted ~600 LOC dead code (ListingEditor, ProgressOverlay, supabase.ts, unused types/functions)",
+      "Phase 2: Extracted 5 custom hooks (useProgress, usePhotos, useGrouping, useGroupEditing, useEbaySubmission)",
+      "Phase 3: Extracted 5 step components (AppHeader, NotificationBanners, UploadStep, GroupedStep, EditingStep)",
+      "Phase 4: API input validation, layout metadata fix, ImageHostingProvider interface, stale comment fixes",
+      "Phase 5: Build + lint + dev server smoke test all passing"
+    ],
+    "smokeTestResults": {
+      "initialRender": "pass",
+      "photoUpload": "pass",
+      "errorHandling": "pass",
+      "groupWithAI": "pass",
+      "groupedStep": "pass",
+      "editGroups": "pass",
+      "cancelEditing": "pass",
+      "stepTransitions": "pass",
+      "consoleErrors": "none (after model fix)"
+    }
+  },
+  "architecture": {
+    "page.tsx": "170 lines - thin orchestration layer with hooks + step components",
+    "hooks": {
+      "useProgress": "Centralized progress state (isActive, message, current/total)",
+      "usePhotos": "Photo array with blob URL cleanup on unmount",
+      "useGrouping": "Core AI workflow: resize → group → generate listings with retry",
+      "useGroupEditing": "Group editing state machine (start/confirm/cancel)",
+      "useEbaySubmission": "eBay submission with single/bulk submit + photo preparation"
+    },
+    "components": {
+      "AppHeader": "Header with logo, step subtitle, eBay status, photo count",
+      "NotificationBanners": "Dismissible success/error banners",
+      "UploadStep": "Upload UI + photo grid + 'how it works' instructions",
+      "GroupedStep": "Grouped photos with PhotoGroupDisplay wrapper",
+      "EditingStep": "Group editing with GroupEditor wrapper"
+    },
+    "largestFiles": {
+      "PhotoGroupDisplay.tsx": "618 LOC - largest active component (follow-up candidate)",
+      "useGrouping.ts": "185 LOC - core AI workflow hook",
+      "UploadStep.tsx": "165 LOC - includes 'how it works' cards"
+    }
+  },
+  "knownIssues": {
+    "geminiModel": "gemini-3-pro-preview has 0 free-tier quota; using gemini-2.5-flash. Swap back in src/lib/ai/gemini.ts:16 when paid quota available.",
+    "preLintWarnings": [
+      "EbayStatus.tsx: missing useEffect dependency (pre-existing)",
+      "GroupEditor.tsx: unused handleMergeGroups (pre-existing)",
+      "ProgressBanner.tsx: setState in effect (pre-existing, Next.js 16 strict rule)"
+    ],
+    "noRemote": "No git remote configured. Local-only repo."
+  },
+  "followUpWork": [
+    "PhotoGroupDisplay.tsx decomposition (618 LOC → ListingCard + ListingDetailsEditor + ItemSpecificsEditor)",
+    "Client-side persistence with IndexedDB/LocalForage for draft recovery",
+    "E2E tests with Vitest + React Testing Library",
+    "Fix pre-existing lint warnings in EbayStatus, GroupEditor, ProgressBanner",
+    "Upgrade Gemini model when paid API quota available"
+  ],
+  "techStack": {
+    "framework": "Next.js 16.1.1 (Turbopack)",
+    "react": "19.2.3",
+    "ai": "Google Generative AI (@google/generative-ai ^0.24.1) with gemini-2.5-flash",
+    "styling": "Tailwind CSS 4",
+    "ebay": "eBay Inventory API (sandbox mode)"
+  }
+}
