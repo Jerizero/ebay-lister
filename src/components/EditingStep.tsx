@@ -8,6 +8,8 @@ interface EditingStepProps {
   onGroupsChange: (groups: PhotoGroup[]) => void;
   onConfirm: () => void;
   onCancel: () => void;
+  isInitialGate?: boolean;
+  dirtyCount?: number;
 }
 
 export function EditingStep({
@@ -15,26 +17,38 @@ export function EditingStep({
   onGroupsChange,
   onConfirm,
   onCancel,
+  isInitialGate = false,
+  dirtyCount,
 }: EditingStepProps) {
+  const validCount = editingGroups.filter((g) => !g.flagged && g.photos.length > 0).length;
+
+  const confirmLabel = isInitialGate
+    ? `Confirm ${validCount} Group${validCount !== 1 ? 's' : ''} & Generate Listings`
+    : dirtyCount && dirtyCount > 0
+    ? `Save Groups & Regenerate ${dirtyCount} Changed Item${dirtyCount !== 1 ? 's' : ''}`
+    : 'Save Group Changes';
+
+  const cancelLabel = isInitialGate ? 'Back to Upload' : 'Cancel Editing';
+
+  const title = isInitialGate
+    ? 'Step 2: Confirm AI Item Groups'
+    : 'Edit Item Groups';
+
+  const subtitle = isInitialGate
+    ? `AI grouped your photos into ${validCount} item${validCount !== 1 ? 's' : ''}. Drag photos to fix any mistakes, split or merge groups, then generate full listings and eBay comps.`
+    : undefined;
+
   return (
     <div className="animate-fade-in">
-      <div className="mb-6">
-        <button
-          onClick={onCancel}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          Cancel editing
-        </button>
-      </div>
-
       <GroupEditor
         groups={editingGroups}
         onGroupsChange={onGroupsChange}
         onConfirm={onConfirm}
         onCancel={onCancel}
+        confirmLabel={confirmLabel}
+        cancelLabel={cancelLabel}
+        title={title}
+        subtitle={subtitle}
       />
     </div>
   );

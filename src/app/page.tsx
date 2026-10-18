@@ -1,78 +1,170 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Listing } from '@/types';
 import { ProgressBanner } from '@/components/ProgressBanner';
-import { AppHeader } from '@/components/AppHeader';
+import { AppHeader, WorkflowStep } from '@/components/AppHeader';
 import { NotificationBanners } from '@/components/NotificationBanners';
 import { UploadStep } from '@/components/UploadStep';
 import { GroupedStep } from '@/components/GroupedStep';
 import { EditingStep } from '@/components/EditingStep';
-import { useProgress, usePhotos, useGrouping, useGroupEditing, useEbaySubmission } from '@/hooks';
-
-type AppStep = 'upload' | 'grouped' | 'editing';
+import {
+  useProgress,
+  usePhotos,
+  useGrouping,
+  useGroupEditing,
+  useEbaySubmission,
+} from '@/hooks';
+import { partitionDirtyGroups } from '@/hooks/useGrouping';
+import {
+  saveSessionToDb,
+  loadSessionFromDb,
+  clearSessionFromDb,
+} from '@/lib/storage/draftStore';
 
 export default function Home() {
-  const [step, setStep] = useState<AppStep>('upload');
+  const [step, setStep] = useState<WorkflowStep>('upload');
   const [error, setError] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // Hooks
   const progress = useProgress();
-  const { photos, addPhotos, removePhoto, clearAll: clearPhotos } = usePhotos();
+  const { photos, addPhotos, restorePhotos, removePhoto, clearAll: clearPhotos } = usePhotos();
 
-  const groupingCallbacks = useMemo(() => ({
-    onProgressStart: progress.start,
-    onProgressUpdate: progress.update,
-    onProgressMessage: progress.setMessage,
-    onProgressSetTotal: progress.setTotal,
-    onProgressFinish: progress.finish,
-  }), [progress.start, progress.update, progress.setMessage, progress.setTotal, progress.finish]);
+  const groupingCallbacks = useMemo(
+    () => ({
+      onProgressStart: progress.start,
+      onProgressUpdate: progress.update,
+      onProgressMessage: progress.setMessage,
+      onProgressSetTotal: progress.setTotal,
+      onProgressFinish: progress.finish,
+    }),
+    [progress.start, progress.update, progress.setMessage, progress.setTotal, progress.finish]
+  );
 
-  const { groups, setGroups, listings, isProcessing, startGrouping, updateListing, markSubmitted, resetGroups } = useGrouping(groupingCallbacks);
+  const {
+    groups,
+    setGroups,
+    listings,
+    isProcessing,
+    refreshingCompId,
+    startGrouping,
+    generateListingsForGroups,
+    refreshListingComps,
+    updateListing,
+    markSubmitted,
+    restoreGroupingState,
+    resetGroups,
+  } = useGrouping(groupingCallbacks);
 
-  const submissionCallbacks = useMemo(() => ({
-    onProgressStart: progress.start,
-    onProgressUpdate: progress.update,
-    onProgressFinish: progress.finish,
-    onMarkSubmitted: markSubmitted,
-  }), [progress.start, progress.update, progress.finish, markSubmitted]);
+  const submissionCallbacks = useMemo(
+    () => ({
+      onProgressStart: progress.start,
+      onProgressUpdate: progress.update,
+      onProgressFinish: progress.finish,
+      onMarkSubmitted: markSubmitted,
+    }),
+    [progress.start, progress.update, progress.finish, markSubmitted]
+  );
 
   const ebay = useEbaySubmission(submissionCallbacks);
 
-  const { editingGroups, setEditingGroups, startEditing, confirmEdits, cancelEdits } = useGroupEditing(
-    groups,
-    (editedGroups) => {
+  // Hydrate saved session from IndexedDB on mount
+  const didHydrateRef = useRef(false);
+  useEffect(() => {
+    if (didHydrateRef.current) return;
+    didHydrateRef.current = true;
+
+    loadSessionFromDb()
+      .then((saved) => {
+        if (saved && saved.photos.length > 0) {
+          restorePhotos(saved.photos);
+          restoreGroupingState(saved.groups, saved.listings);
+          setStep(saved.step);
+        }
+      })
+      .finally(() => {
+        setIsHydrated(true);
+      });
+  }, [restorePhotos, restoreGroupingState]);
+
+  // Persist session changes to IndexedDB
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (photos.length === 0 && groups.length === 0 && listings.length === 0) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      saveSessionToDb({
+        step,
+        photos,
+        groups,
+        listings,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [isHydrated, step, photos, groups, listings]);
+
+  // Group editing hook: when confirming edits (either from the Stage 2 gate or from later Edit Groups),
+  // update groups AND generate listings for any new or modified groups!
+  const handleConfirmGroupEdits = useCallback(
+    async (editedGroups: typeof groups) => {
       setGroups(editedGroups);
       setStep('grouped');
+      setError(null);
+      try {
+        await generateListingsForGroups(editedGroups);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to generate listings');
+      }
     },
+    [setGroups, generateListingsForGroups]
   );
 
-  // Orchestration callbacks
-  const handlePhotosUploaded = useCallback((newPhotos: Parameters<typeof addPhotos>[0]) => {
-    addPhotos(newPhotos);
-    setError(null);
-  }, [addPhotos]);
+  const { editingGroups, setEditingGroups, startEditing, confirmEdits, cancelEdits } =
+    useGroupEditing(groups, handleConfirmGroupEdits);
 
-  const handleClearAll = useCallback(() => {
+  // Calculate how many groups in the editor need fresh listing generation
+  const dirtyCountInEditor = useMemo(() => {
+    const active = editingGroups.length > 0 ? editingGroups : groups;
+    const valid = active.filter((g) => !g.flagged && g.photos.length > 0);
+    const { dirtyGroups } = partitionDirtyGroups(valid, listings);
+    return dirtyGroups.length;
+  }, [editingGroups, groups, listings]);
+
+  const handlePhotosUploaded = useCallback(
+    (newPhotos: Parameters<typeof addPhotos>[0]) => {
+      addPhotos(newPhotos);
+      setError(null);
+    },
+    [addPhotos]
+  );
+
+  const handleClearAll = useCallback(async () => {
     clearPhotos();
     resetGroups();
     setStep('upload');
     setError(null);
-  }, [clearPhotos, resetGroups]);
+    ebay.setSubmitSuccess(null);
+    await clearSessionFromDb();
+  }, [clearPhotos, resetGroups, ebay]);
 
+  // Stage 1 -> Stage 2 Gate: Group photos first, then open the Group Confirmation screen
   const handleStartGrouping = useCallback(async () => {
+    setError(null);
     try {
-      await startGrouping(photos);
-      setStep('grouped');
+      const createdGroups = await startGrouping(photos);
+      if (createdGroups && createdGroups.length > 0) {
+        setEditingGroups(createdGroups.map((g) => ({ ...g, photos: [...g.photos] })));
+        setStep('review-groups');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     }
-  }, [photos, startGrouping]);
+  }, [photos, startGrouping, setEditingGroups]);
 
   const handleBackToUpload = useCallback(() => {
     setStep('upload');
-    setGroups([]);
-  }, [setGroups]);
+  }, []);
 
   const handleStartEditing = useCallback(() => {
     startEditing();
@@ -81,8 +173,20 @@ export default function Home() {
 
   const handleCancelEdits = useCallback(() => {
     cancelEdits();
-    setStep('grouped');
-  }, [cancelEdits]);
+    setStep(listings.length > 0 ? 'grouped' : 'upload');
+  }, [cancelEdits, listings.length]);
+
+  const handleHeaderStepClick = useCallback(
+    (targetStep: WorkflowStep) => {
+      if (targetStep === 'review-groups') {
+        setEditingGroups(groups.map((g) => ({ ...g, photos: [...g.photos] })));
+        setStep(listings.length > 0 ? 'editing' : 'review-groups');
+      } else {
+        setStep(targetStep);
+      }
+    },
+    [groups, listings.length, setEditingGroups]
+  );
 
   const handleSaveDrafts = useCallback(async () => {
     setError(null);
@@ -95,19 +199,22 @@ export default function Home() {
     }
   }, [ebay, listings]);
 
-  const handleSubmitListing = useCallback(async (listing: Listing) => {
-    setError(null);
-    ebay.setSubmitSuccess(null);
-    try {
-      const errorMsg = await ebay.submitSingle(listing);
-      if (errorMsg) setError(errorMsg);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit draft');
-    }
-  }, [ebay]);
+  const handleSubmitListing = useCallback(
+    async (listing: Listing) => {
+      setError(null);
+      ebay.setSubmitSuccess(null);
+      try {
+        const errorMsg = await ebay.submitSingle(listing);
+        if (errorMsg) setError(errorMsg);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to submit draft');
+      }
+    },
+    [ebay]
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <ProgressBanner
         isVisible={isProcessing || ebay.isSubmitting}
         message={progress.message}
@@ -119,8 +226,11 @@ export default function Home() {
 
       <AppHeader
         step={step}
+        groupsCount={groups.length}
         listingsCount={listings.length}
         photosCount={photos.length}
+        isRestoredFromStorage={isHydrated}
+        onStepClick={handleHeaderStepClick}
         onEbayStatusChange={ebay.setIsConnected}
         onClearAll={handleClearAll}
       />
@@ -143,25 +253,29 @@ export default function Home() {
           />
         )}
 
+        {(step === 'review-groups' || step === 'editing') && (
+          <EditingStep
+            editingGroups={editingGroups.length > 0 ? editingGroups : groups}
+            onGroupsChange={setEditingGroups}
+            onConfirm={confirmEdits}
+            onCancel={handleCancelEdits}
+            isInitialGate={step === 'review-groups' && listings.length === 0}
+            dirtyCount={dirtyCountInEditor}
+          />
+        )}
+
         {step === 'grouped' && (
           <GroupedStep
             groups={groups}
             listings={listings}
             submittingId={ebay.submittingId}
+            refreshingCompId={refreshingCompId}
             onBack={handleBackToUpload}
             onEditGroups={handleStartEditing}
             onSaveDrafts={handleSaveDrafts}
             onListingChange={updateListing}
             onSubmitListing={handleSubmitListing}
-          />
-        )}
-
-        {step === 'editing' && (
-          <EditingStep
-            editingGroups={editingGroups}
-            onGroupsChange={setEditingGroups}
-            onConfirm={confirmEdits}
-            onCancel={handleCancelEdits}
+            onRefreshComps={refreshListingComps}
           />
         )}
       </main>

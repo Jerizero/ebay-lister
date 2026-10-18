@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getVisionModel, base64ToGenerativePart } from '@/lib/ai/gemini';
+import { SchemaType, Schema } from '@google/generative-ai';
+import { base64ToGenerativePart, generateStructuredVisionJson } from '@/lib/ai/gemini';
 import { PHOTO_GROUPING_PROMPT } from '@/lib/ai/prompts';
+import { logEvent } from '@/lib/logger';
 
-export const maxDuration = 60; // Allow up to 60 seconds for AI processing
+export const maxDuration = 60;
 
 interface PhotoData {
   base64: string;
@@ -13,7 +15,7 @@ interface GroupingRequest {
   photos: PhotoData[];
 }
 
-interface PhotoGroup {
+export interface RawPhotoGroup {
   photoIndices: number[];
   confidence: number;
   description: string;
@@ -21,19 +23,87 @@ interface PhotoGroup {
 }
 
 interface GroupingResponse {
-  groups: PhotoGroup[];
+  groups: RawPhotoGroup[];
+}
+
+const GROUPING_RESPONSE_SCHEMA: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    groups: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          photoIndices: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.INTEGER },
+          },
+          confidence: { type: SchemaType.NUMBER },
+          description: { type: SchemaType.STRING },
+          flagged: { type: SchemaType.BOOLEAN },
+        },
+        required: ['photoIndices', 'confidence', 'description'],
+      },
+    },
+  },
+  required: ['groups'],
+};
+
+/**
+ * Reconcile AI photo groups so every index in [0, totalPhotos - 1] appears in exactly one group.
+ * Removes out-of-bounds or duplicate indices and creates single-photo groups for any omitted indices.
+ */
+export function normalizeGroupingIndices(
+  groups: RawPhotoGroup[],
+  totalPhotos: number
+): RawPhotoGroup[] {
+  const seen = new Set<number>();
+  const cleanedGroups: RawPhotoGroup[] = [];
+
+  for (const group of groups || []) {
+    const uniqueValidIndices: number[] = [];
+    for (const idx of group.photoIndices || []) {
+      if (Number.isInteger(idx) && idx >= 0 && idx < totalPhotos && !seen.has(idx)) {
+        seen.add(idx);
+        uniqueValidIndices.push(idx);
+      }
+    }
+
+    if (uniqueValidIndices.length > 0) {
+      cleanedGroups.push({
+        photoIndices: uniqueValidIndices,
+        confidence:
+          typeof group.confidence === 'number'
+            ? Math.max(0, Math.min(1, group.confidence))
+            : 0.8,
+        description: group.description?.trim() || 'Grouped item',
+        flagged: Boolean(group.flagged),
+      });
+    }
+  }
+
+  for (let i = 0; i < totalPhotos; i++) {
+    if (!seen.has(i)) {
+      cleanedGroups.push({
+        photoIndices: [i],
+        confidence: 0.5,
+        description: `Ungrouped item #${i + 1}`,
+        flagged: false,
+      });
+    }
+  }
+
+  return cleanedGroups;
 }
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
   try {
     const body: GroupingRequest = await request.json();
     const { photos } = body;
 
     if (!photos || photos.length === 0) {
-      return NextResponse.json(
-        { error: 'No photos provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No photos provided' }, { status: 400 });
     }
 
     if (photos.length > 200) {
@@ -43,7 +113,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate each photo
+    const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
     for (let i = 0; i < photos.length; i++) {
       const photo = photos[i];
       if (!photo.base64 || typeof photo.base64 !== 'string') {
@@ -52,14 +122,12 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      // ~20MB base64 limit (base64 is ~1.33x raw, so ~15MB raw)
       if (photo.base64.length > 20_000_000) {
         return NextResponse.json(
           { error: `Photo ${i + 1}: exceeds 20MB size limit` },
           { status: 400 }
         );
       }
-      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
       if (!validMimeTypes.includes(photo.mimeType)) {
         return NextResponse.json(
           { error: `Photo ${i + 1}: unsupported format. Use JPEG, PNG, WebP, or HEIC` },
@@ -68,87 +136,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[group-photos] Processing ${photos.length} photos...`);
+    logEvent('ACTION_START', 'api/group-photos', 'POST', { photoCount: photos.length });
 
-    // Get the vision model
-    const model = getVisionModel();
+    const imageParts = photos.map((photo) =>
+      base64ToGenerativePart(photo.base64, photo.mimeType)
+    );
 
-    // Convert photos to Gemini format
-    const imageParts = photos.map((photo, index) => {
-      console.log(`[group-photos] Preparing photo ${index + 1}/${photos.length}`);
-      return base64ToGenerativePart(photo.base64, photo.mimeType);
-    });
-
-    // Create the prompt with photo count
     const prompt = `${PHOTO_GROUPING_PROMPT}\n\nYou are analyzing ${photos.length} photos (indexed 0 to ${photos.length - 1}).`;
 
-    console.log('[group-photos] Sending to Gemini...');
+    const { data: rawResult, modelUsed } = await generateStructuredVisionJson<GroupingResponse>({
+      scope: 'api/group-photos',
+      prompt,
+      imageParts,
+      responseSchema: GROUPING_RESPONSE_SCHEMA,
+    });
 
-    // Send to Gemini
-    const result = await model.generateContent([prompt, ...imageParts]);
-    const response = await result.response;
-    const text = response.text();
+    const normalizedGroups = normalizeGroupingIndices(rawResult.groups || [], photos.length);
 
-    console.log('[group-photos] Received response from Gemini');
-
-    // Parse the JSON response
-    // Extract JSON from the response (in case there's extra text)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('[group-photos] No JSON found in response:', text);
-      return NextResponse.json(
-        { error: 'Invalid response from AI - no JSON found' },
-        { status: 500 }
-      );
-    }
-
-    const groupingResult: GroupingResponse = JSON.parse(jsonMatch[0]);
-
-    // Validate that all photo indices are covered
-    const allIndices = new Set<number>();
-    for (const group of groupingResult.groups) {
-      for (const index of group.photoIndices) {
-        if (allIndices.has(index)) {
-          console.warn(`[group-photos] Duplicate index ${index} found`);
-        }
-        allIndices.add(index);
-      }
-    }
-
-    // Check for missing indices
-    for (let i = 0; i < photos.length; i++) {
-      if (!allIndices.has(i)) {
-        console.warn(`[group-photos] Missing index ${i}, adding as single-photo group`);
-        groupingResult.groups.push({
-          photoIndices: [i],
-          confidence: 0.5,
-          description: 'Ungrouped item',
-        });
-      }
-    }
-
-    console.log(`[group-photos] Returning ${groupingResult.groups.length} groups`);
-
-    return NextResponse.json(groupingResult);
-  } catch (error) {
-    console.error('[group-photos] Error:', error);
-
-    if (error instanceof Error) {
-      if (error.message.includes('API key')) {
-        return NextResponse.json(
-          { error: 'Gemini API key not configured. Please add GOOGLE_AI_API_KEY to .env.local' },
-          { status: 500 }
-        );
-      }
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to process photos' },
-      { status: 500 }
+    logEvent(
+      'ACTION_FINISH',
+      'api/group-photos',
+      'POST',
+      {
+        photoCount: photos.length,
+        groupCount: normalizedGroups.length,
+        modelUsed,
+      },
+      Date.now() - start
     );
+
+    return NextResponse.json({ groups: normalizedGroups, modelUsed });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to process photos';
+    logEvent('ERROR', 'api/group-photos', 'POST', { error: message }, Date.now() - start);
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

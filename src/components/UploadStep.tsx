@@ -20,146 +20,117 @@ export function UploadStep({
   onStartGrouping,
 }: UploadStepProps) {
   return (
-    <>
-      {/* Upload section */}
-      <section className="mb-6">
-        <PhotoUploader
-          onPhotosUploaded={onPhotosUploaded}
-          isProcessing={isProcessing}
-        />
-      </section>
-
-      {/* Action button - above the fold */}
+    <div className="space-y-6">
+      {/* Primary action bar when photos are staged */}
       {photos.length > 0 && (
-        <section className="mb-6 flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-200 shadow-lg animate-fade-in-up">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900">
-                {photos.length} photo{photos.length !== 1 ? 's' : ''} ready to process
-              </p>
-              <p className="text-sm text-slate-500">
-                AI will group by item and generate complete listings
-              </p>
-            </div>
+        <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+          <div>
+            <p className="font-bold text-slate-900 text-base">
+              {photos.length} photo{photos.length !== 1 ? 's' : ''} staged for grouping
+            </p>
+            <p className="text-sm text-slate-600 mt-0.5">
+              Step 1 groups photos by item so you can verify them before generating listings and comps.
+            </p>
           </div>
           <button
             onClick={onStartGrouping}
             disabled={isProcessing}
             className={`
-              px-6 py-3 rounded-xl font-semibold text-white
-              transition-all duration-200
-              ${isProcessing
-                ? 'bg-slate-300 cursor-not-allowed'
-                : 'btn-primary'
+              px-6 py-3 rounded-xl font-semibold text-white text-sm
+              transition-all duration-150
+              ${
+                isProcessing
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-blue-700 hover:bg-blue-800 shadow-sm'
               }
             `}
           >
             {isProcessing ? (
               <span className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Processing...
+                Grouping Photos...
               </span>
             ) : (
-              <span className="flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Group with AI
-              </span>
+              `Step 1: Group ${photos.length} Photo${photos.length !== 1 ? 's' : ''} with AI →`
             )}
           </button>
         </section>
       )}
 
-      {/* Photos grid */}
+      {/* Dropzone */}
+      <section>
+        <PhotoUploader
+          onPhotosUploaded={onPhotosUploaded}
+          isProcessing={isProcessing}
+        />
+      </section>
+
+      {/* Staged photos grid */}
       {photos.length > 0 && (
-        <section className="mb-8 animate-fade-in">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-slate-900">
-              Your Photos
+        <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-slate-900">
+              Staged Photos ({photos.length})
             </h2>
-            <span className="text-sm text-slate-400">
-              Hover to remove individual photos
+            <span className="text-xs text-slate-500">
+              Hover any photo to remove it from the batch
             </span>
           </div>
-          <PhotoGrid
-            photos={photos}
-            onRemovePhoto={onRemovePhoto}
-          />
+          <PhotoGrid photos={photos} onRemovePhoto={onRemovePhoto} />
         </section>
       )}
 
-      {/* Instructions */}
+      {/* Compact pipeline overview when empty */}
       {photos.length === 0 && (
-        <section className="mt-16 animate-fade-in-up">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">
-              How it works
-            </h2>
-            <p className="text-slate-500">
-              Three simple steps to bulk create eBay listings
-            </p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="relative group">
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 hover:shadow-xl hover:border-indigo-200 transition-all duration-300 card-hover">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-transform">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="font-bold text-slate-900 text-lg mb-2">Upload Photos</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  Drag & drop up to 200 product photos at once. Mix items freely.
-                </p>
+        <section className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
+            Two-Stage Listing Pipeline
+          </h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-md bg-slate-900 text-white text-xs font-bold flex items-center justify-center">
+                  1
+                </span>
+                <h3 className="font-semibold text-slate-900 text-sm">
+                  Vision Item Grouping
+                </h3>
               </div>
-              <div className="hidden md:block absolute top-1/2 -right-4 transform translate-x-1/2 -translate-y-1/2 z-10">
-                <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
+              <p className="text-xs text-slate-600 leading-relaxed pl-8">
+                Drop a mixed camera roll of clothes, shoes, or gear. Gemini Vision clusters angles and size tags by item and pauses for your review.
+              </p>
             </div>
 
-            <div className="relative group">
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 hover:shadow-xl hover:border-indigo-200 transition-all duration-300 card-hover">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-transform">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </div>
-                <h3 className="font-bold text-slate-900 text-lg mb-2">AI Groups Items</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  AI vision identifies which photos belong to the same item automatically.
-                </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-md bg-slate-900 text-white text-xs font-bold flex items-center justify-center">
+                  2
+                </span>
+                <h3 className="font-semibold text-slate-900 text-sm">
+                  Verify Groups & Pull eBay Comps
+                </h3>
               </div>
-              <div className="hidden md:block absolute top-1/2 -right-4 transform translate-x-1/2 -translate-y-1/2 z-10">
-                <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
+              <p className="text-xs text-slate-600 leading-relaxed pl-8">
+                Split or merge any group before spending listing calls. Confirmed groups query real eBay comps to ground pricing and item specifics.
+              </p>
             </div>
 
-            <div className="group">
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 hover:shadow-xl hover:border-indigo-200 transition-all duration-300 card-hover">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center mb-5 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="font-bold text-slate-900 text-lg mb-2">Ready Listings</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  Complete listings with titles, descriptions, and item specifics generated.
-                </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-md bg-slate-900 text-white text-xs font-bold flex items-center justify-center">
+                  3
+                </span>
+                <h3 className="font-semibold text-slate-900 text-sm">
+                  Direct eBay EPS Upload or CSV
+                </h3>
               </div>
+              <p className="text-xs text-slate-600 leading-relaxed pl-8">
+                Uploads photos to eBay Picture Services (`i.ebayimg.com`), maps leaf category IDs, and saves offers to eBay or exports a Seller Hub CSV.
+              </p>
             </div>
           </div>
         </section>
       )}
-    </>
+    </div>
   );
 }

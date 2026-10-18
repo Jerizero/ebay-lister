@@ -5,7 +5,6 @@ export function usePhotos() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const photosRef = useRef(photos);
 
-  // Keep ref in sync for cleanup
   useEffect(() => {
     photosRef.current = photos;
   }, [photos]);
@@ -13,30 +12,37 @@ export function usePhotos() {
   // Revoke all blob URLs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
-      photosRef.current.forEach(photo => URL.revokeObjectURL(photo.url));
+      photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.url));
     };
   }, []);
 
   const addPhotos = useCallback((newPhotos: Photo[]) => {
-    setPhotos(prev => [...prev, ...newPhotos]);
+    setPhotos((prev) => [...prev, ...newPhotos]);
+  }, []);
+
+  const restorePhotos = useCallback((restored: Photo[]) => {
+    setPhotos((prev) => {
+      prev.forEach((photo) => URL.revokeObjectURL(photo.url));
+      return restored;
+    });
   }, []);
 
   const removePhoto = useCallback((id: string) => {
-    setPhotos(prev => {
-      const photo = prev.find(p => p.id === id);
+    setPhotos((prev) => {
+      const photo = prev.find((p) => p.id === id);
       if (photo) {
         URL.revokeObjectURL(photo.url);
       }
-      return prev.filter(p => p.id !== id);
+      return prev.filter((p) => p.id !== id);
     });
   }, []);
 
   const clearAll = useCallback(() => {
-    setPhotos(prev => {
-      prev.forEach(photo => URL.revokeObjectURL(photo.url));
+    setPhotos((prev) => {
+      prev.forEach((photo) => URL.revokeObjectURL(photo.url));
       return [];
     });
   }, []);
 
-  return { photos, addPhotos, removePhoto, clearAll };
+  return { photos, addPhotos, restorePhotos, removePhoto, clearAll };
 }

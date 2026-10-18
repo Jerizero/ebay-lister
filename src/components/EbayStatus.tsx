@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface EbayStatusProps {
   onStatusChange?: (connected: boolean) => void;
@@ -11,10 +11,23 @@ export function EbayStatus({ onStatusChange }: EbayStatusProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const checkStatus = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/ebay/status');
+      const data = await response.json();
+      setIsConnected(Boolean(data.connected));
+      onStatusChange?.(Boolean(data.connected));
+    } catch {
+      console.error('Failed to check eBay status');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onStatusChange]);
+
   useEffect(() => {
     checkStatus();
 
-    // Check for OAuth callback params
     const params = new URLSearchParams(window.location.search);
     const connected = params.get('ebay_connected');
     const oauthError = params.get('ebay_error');
@@ -22,28 +35,12 @@ export function EbayStatus({ onStatusChange }: EbayStatusProps) {
     if (connected === 'true') {
       setIsConnected(true);
       onStatusChange?.(true);
-      // Clean up URL
       window.history.replaceState({}, '', window.location.pathname);
     } else if (oauthError) {
       setError(oauthError);
-      // Clean up URL
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [onStatusChange]);
-
-  const checkStatus = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/ebay/status');
-      const data = await response.json();
-      setIsConnected(data.connected);
-      onStatusChange?.(data.connected);
-    } catch {
-      console.error('Failed to check eBay status');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [checkStatus, onStatusChange]);
 
   const handleConnect = () => {
     window.location.href = '/api/ebay/auth';
@@ -69,7 +66,7 @@ export function EbayStatus({ onStatusChange }: EbayStatusProps) {
         </div>
         <button
           onClick={handleConnect}
-          className="px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+          className="px-3 py-1.5 text-sm font-medium text-blue-700 hover:text-blue-800 transition-colors"
         >
           Try again
         </button>
@@ -80,8 +77,8 @@ export function EbayStatus({ onStatusChange }: EbayStatusProps) {
   if (isConnected) {
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
-        <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-        <span className="text-sm font-medium text-emerald-700">eBay Connected</span>
+        <div className="w-2 h-2 bg-emerald-600 rounded-full" />
+        <span className="text-sm font-medium text-emerald-800">eBay Connected</span>
       </div>
     );
   }
@@ -89,7 +86,7 @@ export function EbayStatus({ onStatusChange }: EbayStatusProps) {
   return (
     <button
       onClick={handleConnect}
-      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-medium rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm hover:shadow-md"
+      className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white text-sm font-medium rounded-lg hover:bg-blue-800 transition-all shadow-sm"
     >
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
         <path d="M5.77 10.24a6.57 6.57 0 0 0 5.05 2.4c2.2 0 4.2-1.1 5.4-2.78.1-.14.2-.28.28-.43a.94.94 0 0 0-.82-1.43h-.38a.93.93 0 0 0-.75.38c-.75 1-1.97 1.66-3.33 1.66a4.17 4.17 0 0 1-3.4-1.78.93.93 0 0 0-.76-.38h-.38a.94.94 0 0 0-.91 1.36zm12.46 3.52a6.57 6.57 0 0 0-5.05-2.4c-2.2 0-4.2 1.1-5.4 2.78-.1.14-.2.28-.28.43a.94.94 0 0 0 .82 1.43h.38a.93.93 0 0 0 .75-.38c.75-1 1.97-1.66 3.33-1.66a4.17 4.17 0 0 1 3.4 1.78.93.93 0 0 0 .76.38h.38a.94.94 0 0 0 .91-1.36z" />

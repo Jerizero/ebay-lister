@@ -23,15 +23,18 @@ export function ProgressBanner({
 
   useEffect(() => {
     if (!isVisible) {
-      setElapsedTime(0);
       return;
     }
 
+    const startedAt = Date.now();
     const interval = setInterval(() => {
-      setElapsedTime(prev => prev + 1);
-    }, 1000);
+      setElapsedTime(Math.floor((Date.now() - startedAt) / 1000));
+    }, 500);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      setElapsedTime(0);
+    };
   }, [isVisible]);
 
   if (!isVisible) return null;
@@ -45,18 +48,13 @@ export function ProgressBanner({
 
   return (
     <div className="sticky top-0 z-50 animate-fade-in">
-      {/* Solid dark background for readability */}
-      <div className="relative overflow-hidden bg-slate-900">
-
-        {/* Content */}
+      <div className="relative overflow-hidden bg-slate-900 border-b border-slate-800">
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between gap-6">
-            {/* Left: Status indicator and message */}
             <div className="flex items-center gap-4 min-w-0">
-              {/* Animated status indicator */}
               <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-indigo-300 border-t-white rounded-full animate-spin" />
+                <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-blue-200 border-t-white rounded-full animate-spin" />
                 </div>
               </div>
 
@@ -68,13 +66,12 @@ export function ProgressBanner({
               </div>
             </div>
 
-            {/* Center: Progress bar */}
             <div className="flex-1 max-w-lg hidden sm:block">
               {typeof progress === 'number' && (
                 <div className="flex items-center gap-4">
                   <div className="flex-1 bg-slate-700 rounded-full h-2.5 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-indigo-500 transition-all duration-500 ease-out"
+                      className="h-full rounded-full bg-blue-500 transition-all duration-500 ease-out"
                       style={{ width: `${Math.max(progress, 2)}%` }}
                     />
                   </div>
@@ -85,7 +82,6 @@ export function ProgressBanner({
               )}
             </div>
 
-            {/* Right: Time elapsed */}
             <div className="flex-shrink-0 flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-lg">
               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

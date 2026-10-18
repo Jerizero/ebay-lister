@@ -1,77 +1,60 @@
 {
   "project": "ebay-lister",
-  "description": "AI-powered bulk eBay listing creation using Gemini Vision",
-  "lastUpdated": "2026-02-07",
-  "currentState": "refactoring-complete",
+  "description": "AI-powered bulk eBay listing creation using Gemini Vision, real eBay comps, and direct EPS draft submission",
+  "lastUpdated": "2026-10-18",
+  "currentState": "production-overhaul-complete",
   "recentWork": {
-    "session": "2026-02-07",
-    "summary": "Full refactoring: decomposed god component, removed dead code, added production fixes",
-    "commits": [
-      "13578e8 - refactor: decompose god component and remove dead code",
-      "4f11719 - fix: revert Gemini model to gemini-2.5-flash"
-    ],
+    "session": "2026-10-18",
+    "summary": "Complete project audit and overhaul: Two-stage grouping pipeline, real eBay market comps, eBay Picture Services upload, IndexedDB draft persistence, and Vitest test suite",
+    "linearIssue": "JER-80",
     "changesCompleted": [
-      "Phase 1: Deleted ~600 LOC dead code (ListingEditor, ProgressOverlay, supabase.ts, unused types/functions)",
-      "Phase 2: Extracted 5 custom hooks (useProgress, usePhotos, useGrouping, useGroupEditing, useEbaySubmission)",
-      "Phase 3: Extracted 5 step components (AppHeader, NotificationBanners, UploadStep, GroupedStep, EditingStep)",
-      "Phase 4: API input validation, layout metadata fix, ImageHostingProvider interface, stale comment fixes",
-      "Phase 5: Build + lint + dev server smoke test all passing"
+      "Phase 1: Two-Stage Listing Pipeline (Stage 1 AI grouping -> Stage 2 Group review/edit gate -> Stage 3 Comps & listing generation)",
+      "Phase 2: Real eBay Comps Engine via eBay Browse API + fallback scraper with outlier-trimmed pricing",
+      "Phase 3: Real eBay Picture Services upload (UploadSiteHostedPictures base64 XML API) replacing fake image URLs",
+      "Phase 4: eBay Commerce Taxonomy leaf category resolution and seller business policies integration",
+      "Phase 5: Client-side IndexedDB persistence for photos, groups, and listings across page refreshes",
+      "Phase 6: Extracted ListingCard component from monolithic PhotoGroupDisplay and resolved all ESLint warnings (0 errors, 0 warnings)",
+      "Phase 7: Added Vitest test suite with 8 unit tests covering pricing, grouping normalization, dirty-group diffing, and taxonomy resolution",
+      "Phase 8: Design-eval audit passing 10/10 with crisp 3-step pipeline header and no AI slop"
     ],
-    "smokeTestResults": {
-      "initialRender": "pass",
-      "photoUpload": "pass",
-      "errorHandling": "pass",
-      "groupWithAI": "pass",
-      "groupedStep": "pass",
-      "editGroups": "pass",
-      "cancelEditing": "pass",
-      "stepTransitions": "pass",
-      "consoleErrors": "none (after model fix)"
+    "verificationResults": {
+      "vitestTests": "8 of 8 passed",
+      "eslint": "0 errors, 0 warnings",
+      "nextBuild": "11 of 11 routes compiled successfully",
+      "designEvalScore": "10 of 10"
     }
   },
   "architecture": {
-    "page.tsx": "170 lines - thin orchestration layer with hooks + step components",
+    "page.tsx": "Two-stage pipeline state machine hydrating from IndexedDB with dirty-group regeneration",
     "hooks": {
       "useProgress": "Centralized progress state (isActive, message, current/total)",
-      "usePhotos": "Photo array with blob URL cleanup on unmount",
-      "useGrouping": "Core AI workflow: resize → group → generate listings with retry",
-      "useGroupEditing": "Group editing state machine (start/confirm/cancel)",
-      "useEbaySubmission": "eBay submission with single/bulk submit + photo preparation"
+      "usePhotos": "Photo array backed by IndexedDB Blobs and object URLs with unmount cleanup",
+      "useGrouping": "Two-stage workflow hook: startGrouping -> generateListingsForGroups -> refreshListingComps",
+      "useGroupEditing": "Group editing state machine (split, merge, modify photo membership)",
+      "useEbaySubmission": "eBay submission with EPS photo upload and draft creation"
     },
     "components": {
-      "AppHeader": "Header with logo, step subtitle, eBay status, photo count",
-      "NotificationBanners": "Dismissible success/error banners",
-      "UploadStep": "Upload UI + photo grid + 'how it works' instructions",
-      "GroupedStep": "Grouped photos with PhotoGroupDisplay wrapper",
-      "EditingStep": "Group editing with GroupEditor wrapper"
+      "AppHeader": "3-stage pipeline visual stepper with eBay connection status pill and auto-saved badge",
+      "UploadStep": "Unified drag-and-drop zone with HEIC support and capability overview",
+      "GroupEditor": "Stage 2 confirmation screen with photo reordering and group splitting/merging",
+      "PhotoGroupDisplay": "Stage 3 listings container with batch value calculation and Seller Hub CSV export",
+      "ListingCard": "Modular listing item card with market comps provenance and live price refresh"
     },
-    "largestFiles": {
-      "PhotoGroupDisplay.tsx": "618 LOC - largest active component (follow-up candidate)",
-      "useGrouping.ts": "185 LOC - core AI workflow hook",
-      "UploadStep.tsx": "165 LOC - includes 'how it works' cards"
+    "lib": {
+      "storage/draftStore.ts": "IndexedDB store for draft recovery and offline resilience",
+      "ebay/comps.ts": "eBay Browse API comp search and outlier-trimmed pricing stats",
+      "ebay/images.ts": "UploadSiteHostedPictures EPS integration",
+      "ebay/client.ts": "Commerce Taxonomy API leaf lookup and Account policy resolution",
+      "logger.ts": "Structured millisecond lifecycle logger flushing to logs/ebay-lister.log"
     }
   },
-  "knownIssues": {
-    "geminiModel": "gemini-3-pro-preview has 0 free-tier quota; using gemini-2.5-flash. Swap back in src/lib/ai/gemini.ts:16 when paid quota available.",
-    "preLintWarnings": [
-      "EbayStatus.tsx: missing useEffect dependency (pre-existing)",
-      "GroupEditor.tsx: unused handleMergeGroups (pre-existing)",
-      "ProgressBanner.tsx: setState in effect (pre-existing, Next.js 16 strict rule)"
-    ],
-    "noRemote": "No git remote configured. Local-only repo."
-  },
-  "followUpWork": [
-    "PhotoGroupDisplay.tsx decomposition (618 LOC → ListingCard + ListingDetailsEditor + ItemSpecificsEditor)",
-    "Client-side persistence with IndexedDB/LocalForage for draft recovery",
-    "E2E tests with Vitest + React Testing Library",
-    "Fix pre-existing lint warnings in EbayStatus, GroupEditor, ProgressBanner",
-    "Upgrade Gemini model when paid API quota available"
-  ],
   "techStack": {
     "framework": "Next.js 16.1.1 (Turbopack)",
     "react": "19.2.3",
-    "ai": "Google Generative AI (@google/generative-ai ^0.24.1) with gemini-2.5-flash",
+    "ai": "@google/generative-ai with gemini-3.1-pro-preview / gemini-3.7-flash fallback",
     "styling": "Tailwind CSS 4",
-    "ebay": "eBay Inventory API (sandbox mode)"
+    "storage": "Browser IndexedDB",
+    "testing": "Vitest 4.1.12",
+    "ebay": "eBay Inventory API + Trading EPS + Commerce Taxonomy + Browse APIs"
   }
 }

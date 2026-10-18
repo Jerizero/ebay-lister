@@ -1,4 +1,5 @@
 export * from './ebay';
+import { MarketComps } from './ebay';
 
 // Photo types
 export interface Photo {
@@ -23,6 +24,8 @@ export interface Listing {
   id: string;
   groupId: string;
   photos: Photo[];
+  /** Signature of photo IDs used to generate this listing, used to detect dirty groups after editing */
+  photoSignature?: string;
 
   // Generated content
   title: string;
@@ -38,11 +41,19 @@ export interface Listing {
     color?: string;
     material?: string;
     model?: string;
+    style?: string;
+    department?: string;
+    sizeType?: string;
     [key: string]: string | undefined;
   };
 
-  // Pricing
+  // Pricing & Comps
   price?: number;
+  suggestedPriceRange?: {
+    min: number;
+    max: number;
+  };
+  comps?: MarketComps;
 
   // Shipping & Returns
   shippingPaidBy: 'buyer' | 'seller';
@@ -51,9 +62,10 @@ export interface Listing {
   // Status
   status: 'draft' | 'ready' | 'submitted' | 'published';
   ebayListingId?: string;
+  ebayOfferId?: string;
+  ebaySku?: string;
 
   // Metadata
   createdAt: Date;
   updatedAt: Date;
 }
-

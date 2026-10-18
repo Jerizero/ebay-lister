@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnectionStatus } from '@/lib/ebay/oauth';
-import { createInventoryItem, createOffer, generateSku, findCategoryId } from '@/lib/ebay/client';
-import { uploadImages } from '@/lib/ebay/images';
+import {
+  createInventoryItem,
+  createOffer,
+  publishOffer,
+  generateSku,
+  findCategoryId,
+} from '@/lib/ebay/client';
+import { uploadImagesWithMeta } from '@/lib/ebay/images';
 import { SubmitDraftsRequest, SubmitDraftsResponse } from '@/types/ebay';
 import { Listing } from '@/types';
+import { logEvent } from '@/lib/logger';
 
-export const maxDuration = 120; // Allow up to 2 minutes for bulk submission
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
   try {
-    // Check if eBay is connected
     const status = await getConnectionStatus();
     if (!status.connected) {
       return NextResponse.json(
@@ -19,38 +26,37 @@ export async function POST(request: NextRequest) {
     }
 
     const body: SubmitDraftsRequest = await request.json();
-    const { listings } = body;
+    const { listings, publish = false } = body;
 
     if (!listings || listings.length === 0) {
-      return NextResponse.json(
-        { error: 'No listings provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No listings provided' }, { status: 400 });
     }
 
-    // Validate each listing
     for (const listing of listings) {
       if (!listing.title || listing.title.length === 0 || listing.title.length > 80) {
         return NextResponse.json(
-          { error: `Listing title must be 1-80 characters` },
+          { error: 'Listing title must be 1-80 characters' },
           { status: 400 }
         );
       }
       if (!listing.description) {
         return NextResponse.json(
-          { error: `Listing description is required` },
+          { error: 'Listing description is required' },
           { status: 400 }
         );
       }
       if (!listing.photoBase64s || listing.photoBase64s.length === 0) {
         return NextResponse.json(
-          { error: `Each listing must have at least one photo` },
+          { error: 'Each listing must have at least one photo' },
           { status: 400 }
         );
       }
     }
 
-    console.log(`[api/ebay/submit-drafts] Processing ${listings.length} listings...`);
+    logEvent('ACTION_START', 'api/ebay/submit-drafts', 'POST', {
+      count: listings.length,
+      publish,
+    });
 
     const results: SubmitDraftsResponse['results'] = [];
 
@@ -58,20 +64,21 @@ export async function POST(request: NextRequest) {
       const sku = generateSku(listingData.id);
 
       try {
-        // Step 1: Upload images (placeholder URLs for sandbox testing)
-        console.log(`[api/ebay/submit-drafts] Uploading images for ${sku}...`);
-        const imageUrls = await uploadImages(
-          listingData.photoBase64s.map(base64 => ({ base64, mimeType: 'image/jpeg' }))
+        // Step 1: Upload images to eBay Picture Services (with sandbox fallback)
+        const { urls: imageUrls, hostedVia } = await uploadImagesWithMeta(
+          listingData.photoBase64s.map((base64) => ({ base64, mimeType: 'image/jpeg' }))
         );
 
         if (imageUrls.length === 0) {
           throw new Error('No images could be uploaded');
         }
 
-        // Step 2: Create inventory item
-        console.log(`[api/ebay/submit-drafts] Creating inventory item for ${sku}...`);
+        // Step 2: Resolve leaf category ID via Taxonomy API or deterministic leaf map
+        const categoryId =
+          listingData.categoryId ||
+          (await findCategoryId(listingData.category, listingData.title));
 
-        // Convert to Listing type for the client
+        // Step 3: Build full Listing object preserving shippingPaidBy & acceptsReturns
         const listing: Listing = {
           id: listingData.id,
           groupId: listingData.id,
@@ -79,11 +86,12 @@ export async function POST(request: NextRequest) {
           title: listingData.title,
           description: listingData.description,
           category: listingData.category,
+          categoryId,
           condition: listingData.condition as Listing['condition'],
           itemSpecifics: listingData.itemSpecifics as Listing['itemSpecifics'],
           price: listingData.price,
-          shippingPaidBy: 'buyer',
-          acceptsReturns: false,
+          shippingPaidBy: listingData.shippingPaidBy || 'buyer',
+          acceptsReturns: Boolean(listingData.acceptsReturns),
           status: 'draft',
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -91,36 +99,50 @@ export async function POST(request: NextRequest) {
 
         await createInventoryItem(sku, listing, imageUrls);
 
-        // Step 3: Create offer (unpublished)
-        console.log(`[api/ebay/submit-drafts] Creating offer for ${sku}...`);
-        const categoryId = await findCategoryId(listingData.category);
+        // Step 4: Create offer
         const offerId = await createOffer(sku, listing, categoryId);
+
+        // Step 5: Optionally publish offer if requested and account policies are configured
+        let ebayListingId: string | undefined;
+        if (publish) {
+          ebayListingId = await publishOffer(offerId);
+        }
 
         results.push({
           listingId: listingData.id,
           sku,
           offerId,
+          ebayListingId,
+          categoryId,
+          imageUrls,
+          hostedVia,
         });
 
-        console.log(`[api/ebay/submit-drafts] Successfully created draft for ${sku}`);
-
-        // Rate limiting: wait between API calls to avoid eBay rate limits
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 350));
       } catch (error) {
-        console.error(`[api/ebay/submit-drafts] Error processing ${sku}:`, error);
+        const errMsg = error instanceof Error ? error.message : 'Unknown error';
+        logEvent('ERROR', 'api/ebay/submit-drafts', 'item', {
+          listingId: listingData.id,
+          sku,
+          error: errMsg,
+        });
         results.push({
           listingId: listingData.id,
           sku,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errMsg,
         });
       }
     }
 
-    const successCount = results.filter(r => !r.error).length;
-    const failCount = results.filter(r => r.error).length;
+    const successCount = results.filter((r) => !r.error).length;
+    const failCount = results.filter((r) => r.error).length;
 
-    console.log(
-      `[api/ebay/submit-drafts] Completed: ${successCount} success, ${failCount} failed`
+    logEvent(
+      'ACTION_FINISH',
+      'api/ebay/submit-drafts',
+      'POST',
+      { successCount, failCount },
+      Date.now() - start
     );
 
     const response: SubmitDraftsResponse = {
@@ -130,10 +152,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('[api/ebay/submit-drafts] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to submit drafts' },
-      { status: 500 }
-    );
+    const errMsg = error instanceof Error ? error.message : 'Failed to submit drafts';
+    logEvent('ERROR', 'api/ebay/submit-drafts', 'POST', { error: errMsg }, Date.now() - start);
+    return NextResponse.json({ error: errMsg }, { status: 500 });
   }
 }

@@ -15,6 +15,28 @@ export interface EbayTokenRecord {
   updated_at: string;
 }
 
+// Market Comps Types
+export interface CompItem {
+  title: string;
+  price: number;
+  currency: string;
+  condition?: string;
+  itemWebUrl?: string;
+  imageUrl?: string;
+}
+
+export interface MarketComps {
+  query: string;
+  source: 'ebay_browse_api' | 'ebay_public_search' | 'ai_estimate';
+  count: number;
+  minPrice: number;
+  maxPrice: number;
+  medianPrice: number;
+  recommendedPrice: number;
+  sampleItems: CompItem[];
+  fetchedAt: string;
+}
+
 // eBay Inventory API Types
 export interface EbayInventoryItem {
   sku: string;
@@ -32,6 +54,13 @@ export interface EbayInventoryItem {
       quantity: number;
     };
   };
+}
+
+export interface EbayAccountPolicies {
+  fulfillmentPolicyId?: string;
+  paymentPolicyId?: string;
+  returnPolicyId?: string;
+  merchantLocationKey?: string;
 }
 
 export interface EbayOffer {
@@ -67,8 +96,16 @@ export interface EbayOfferResponse {
 export const EBAY_CONDITION_MAP: Record<string, string> = {
   NEW: '1000',
   LIKE_NEW: '3000',
-  GOOD: '5000',
-  ACCEPTABLE: '6000',
+  GOOD: '3000', // Note: many eBay clothing categories map pre-owned good/like-new to 3000 (Pre-owned) unless graded
+  ACCEPTABLE: '3000',
+};
+
+// Detailed condition IDs for categories supporting granular used states
+export const EBAY_GRANULAR_CONDITION_MAP: Record<string, string> = {
+  NEW: '1000',
+  LIKE_NEW: '2750',
+  GOOD: '4000',
+  ACCEPTABLE: '5000',
 };
 
 // eBay API environments
@@ -87,13 +124,17 @@ export const EBAY_MARKETPLACE_ID = 'EBAY_US';
 
 // Submit drafts request/response
 export interface SubmitDraftsRequest {
+  publish?: boolean;
   listings: {
     id: string;
     title: string;
     description: string;
     category: string;
+    categoryId?: string;
     condition: string;
     price?: number;
+    shippingPaidBy?: 'buyer' | 'seller';
+    acceptsReturns?: boolean;
     itemSpecifics: Record<string, string | undefined>;
     photoBase64s: string[];
   }[];
@@ -105,6 +146,10 @@ export interface SubmitDraftsResponse {
     listingId: string;
     sku: string;
     offerId?: string;
+    ebayListingId?: string;
+    categoryId?: string;
+    imageUrls?: string[];
+     hostedVia?: 'ebay_eps' | 'sandbox_fallback';
     error?: string;
   }[];
 }
