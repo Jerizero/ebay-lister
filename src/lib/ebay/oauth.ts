@@ -22,6 +22,7 @@ function getConfig() {
 export function generateAuthUrl(): string {
   const config = getConfig();
   const scopes = [
+    'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/sell.inventory',
     'https://api.ebay.com/oauth/api_scope/sell.account',
   ];
@@ -72,6 +73,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<EbayToke
   const credentials = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64');
 
   const scopes = [
+    'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/sell.inventory',
     'https://api.ebay.com/oauth/api_scope/sell.account',
   ];
@@ -101,6 +103,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<EbayToke
 
 // Save tokens to local file
 export async function saveTokens(tokens: EbayTokens): Promise<void> {
+  const config = getConfig();
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
   const tokenRecord: EbayTokenRecord = {
@@ -110,17 +113,29 @@ export async function saveTokens(tokens: EbayTokens): Promise<void> {
     refresh_token: tokens.refresh_token,
     expires_at: expiresAt,
     updated_at: new Date().toISOString(),
+    environment: config.environment,
   };
 
   await fs.writeFile(TOKENS_FILE, JSON.stringify(tokenRecord, null, 2));
-  console.log('[ebay/oauth] Tokens saved to', TOKENS_FILE);
+  console.log('[ebay/oauth] Tokens saved to', TOKENS_FILE, `(env: ${config.environment})`);
 }
 
 // Get stored tokens from local file
 export async function getStoredTokens(): Promise<EbayTokenRecord | null> {
   try {
+    const config = getConfig();
     const data = await fs.readFile(TOKENS_FILE, 'utf-8');
-    return JSON.parse(data) as EbayTokenRecord;
+    const parsed = JSON.parse(data) as EbayTokenRecord;
+
+    // If tokens were saved under a different environment, require fresh auth
+    if (parsed.environment && parsed.environment !== config.environment) {
+      console.log(
+        `[ebay/oauth] Stored tokens are for ${parsed.environment}, but active environment is ${config.environment}. Re-auth required.`
+      );
+      return null;
+    }
+
+    return parsed;
   } catch (err) {
     // File doesn't exist or invalid - not connected yet
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -168,13 +183,15 @@ export async function getValidAccessToken(): Promise<string> {
 // Check connection status
 export async function getConnectionStatus(): Promise<{
   connected: boolean;
+  environment: 'sandbox' | 'production';
   expiresAt?: string;
 }> {
+  const config = getConfig();
   try {
     const stored = await getStoredTokens();
 
     if (!stored) {
-      return { connected: false };
+      return { connected: false, environment: config.environment };
     }
 
     // Check if we can get a valid token (will refresh if needed)
@@ -182,9 +199,10 @@ export async function getConnectionStatus(): Promise<{
 
     return {
       connected: true,
+      environment: config.environment,
       expiresAt: stored.expires_at,
     };
   } catch {
-    return { connected: false };
+    return { connected: false, environment: config.environment };
   }
 }

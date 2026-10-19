@@ -4,6 +4,7 @@ import { normalizeGroupingIndices } from '../app/api/group-photos/route';
 import { partitionDirtyGroups } from '../hooks/useGrouping';
 import { resolveLeafCategoryFallback, formatAspectName } from '../lib/ebay/client';
 import { computePhotoSignature, exportListingsToCsv } from '../lib/utils';
+import { auditListingSpecifics } from '../components/ListingCard';
 import { Photo, PhotoGroup, Listing } from '../types';
 
 describe('eBay Comps & Pricing Math', () => {
@@ -154,3 +155,86 @@ describe('CSV Draft Export', () => {
     expect(csv).toContain('11483');
   });
 });
+
+describe('eBay Specifics Completeness Audit', () => {
+  it('correctly identifies missing aspects for clothing items', () => {
+    const dummyFile = new File(['dummy'], 'photo.jpg', { type: 'image/jpeg' });
+    const listing: Listing = {
+      id: 'l-audit-1',
+      groupId: 'g-1',
+      photos: [{ id: 'p1', file: dummyFile, url: 'blob:1' }],
+      title: "Levi's 501 Denim Jeans",
+      description: 'Men denim pants',
+      category: 'Clothing > Men > Jeans',
+      condition: 'GOOD',
+      itemSpecifics: {
+        Brand: "Levi's",
+        Department: 'Men',
+        Color: 'Blue',
+      },
+      price: 29.99,
+      shippingPaidBy: 'buyer',
+      acceptsReturns: false,
+      status: 'ready',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const audit = auditListingSpecifics(listing);
+    expect(audit.isComplete).toBe(false);
+    expect(audit.filledCount).toBe(3);
+    expect(audit.totalCount).toBe(6);
+    expect(audit.missing).toContain('Size');
+    expect(audit.missing).toContain('Size Type');
+    expect(audit.missing).toContain('Material');
+  });
+
+  it('marks a listing as complete when all key aspects are present', () => {
+    const dummyFile = new File(['dummy'], 'photo.jpg', { type: 'image/jpeg' });
+    const listing: Listing = {
+      id: 'l-audit-2',
+      groupId: 'g-2',
+      photos: [{ id: 'p1', file: dummyFile, url: 'blob:1' }],
+      title: 'Nike Air Max 90 Running Shoes',
+      description: 'Men sneakers',
+      category: 'Clothing > Shoes > Sneakers',
+      condition: 'LIKE_NEW',
+      itemSpecifics: {
+        brand: 'Nike',
+        'US Shoe Size': '10.5',
+        department: 'Men',
+        color: 'Black/White',
+        style: 'Sneaker',
+      },
+      price: 65.00,
+      shippingPaidBy: 'buyer',
+      acceptsReturns: true,
+      status: 'ready',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const audit = auditListingSpecifics(listing);
+    expect(audit.isComplete).toBe(true);
+    expect(audit.missing.length).toBe(0);
+    expect(audit.filledCount).toBe(5);
+  });
+});
+
+describe('Cover Photo Selection', () => {
+  it('reorders target photo to index 0 while preserving group membership signature', () => {
+    const dummyFile = new File(['dummy'], 'photo.jpg', { type: 'image/jpeg' });
+    const p1: Photo = { id: 'p1', file: dummyFile, url: 'blob:1' };
+    const p2: Photo = { id: 'p2', file: dummyFile, url: 'blob:2' };
+    const p3: Photo = { id: 'p3', file: dummyFile, url: 'blob:3' };
+
+    const originalPhotos = [p1, p2, p3];
+    // Move p3 to cover (index 0)
+    const newPhotos = [p3, p1, p2];
+
+    expect(newPhotos[0].id).toBe('p3');
+    // Group membership signature is preserved so AI does not unnecessarily re-run
+    expect(computePhotoSignature(newPhotos)).toBe(computePhotoSignature(originalPhotos));
+  });
+});
+

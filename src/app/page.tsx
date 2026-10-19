@@ -51,6 +51,7 @@ export default function Home() {
     generateListingsForGroups,
     refreshListingComps,
     updateListing,
+    batchUpdateListings,
     markSubmitted,
     restoreGroupingState,
     resetGroups,
@@ -274,6 +275,7 @@ export default function Home() {
             onEditGroups={handleStartEditing}
             onSaveDrafts={handleSaveDrafts}
             onListingChange={updateListing}
+            onBatchUpdateListings={batchUpdateListings}
             onSubmitListing={handleSubmitListing}
             onRefreshComps={refreshListingComps}
           />

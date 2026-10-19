@@ -11,6 +11,7 @@ interface PhotoGroupDisplayProps {
   onEditGroups?: () => void;
   onSaveDrafts?: () => void;
   onListingChange?: (listing: Listing) => void;
+  onBatchUpdateListings?: (updater: (prev: Listing[]) => Listing[]) => void;
   onSubmitListing?: (listing: Listing) => void;
   onRefreshComps?: (listingId: string, query: string) => void;
   submittingId?: string | null;
@@ -83,12 +84,90 @@ export function PhotoGroupDisplay({
   onEditGroups,
   onSaveDrafts,
   onListingChange,
+  onBatchUpdateListings,
   onSubmitListing,
   onRefreshComps,
   submittingId,
   refreshingCompId,
 }: PhotoGroupDisplayProps) {
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
+
+  const showNotice = (msg: string) => {
+    setBatchNotice(msg);
+    setTimeout(() => setBatchNotice(null), 3000);
+  };
+
+  const handleAdjustPrices = (multiplierDelta: number, noticeText: string) => {
+    if (!onBatchUpdateListings) return;
+    onBatchUpdateListings((prev) =>
+      prev.map((l) => {
+        const currentPrice = Number.isFinite(l.price) ? (l.price as number) : 19.99;
+        const newPrice = Math.max(0.99, Math.round(currentPrice * (1 + multiplierDelta) * 100) / 100);
+        return {
+          ...l,
+          price: newPrice,
+          updatedAt: new Date(),
+        };
+      })
+    );
+    showNotice(noticeText);
+  };
+
+  const handleSnapToCompMedian = () => {
+    if (!onBatchUpdateListings) return;
+    let updatedCount = 0;
+    onBatchUpdateListings((prev) =>
+      prev.map((l) => {
+        if (l.comps?.medianPrice && Number.isFinite(l.comps.medianPrice)) {
+          updatedCount++;
+          return {
+            ...l,
+            price: l.comps.medianPrice,
+            updatedAt: new Date(),
+          };
+        }
+        return l;
+      })
+    );
+    showNotice(
+      updatedCount > 0
+        ? `Snapped ${updatedCount} listing${updatedCount !== 1 ? 's' : ''} to eBay comp median`
+        : 'No eBay comps available yet to snap prices'
+    );
+  };
+
+  const handleSetAllShipping = (policy: 'buyer' | 'seller') => {
+    if (!onBatchUpdateListings) return;
+    onBatchUpdateListings((prev) =>
+      prev.map((l) => ({
+        ...l,
+        shippingPaidBy: policy,
+        updatedAt: new Date(),
+      }))
+    );
+    showNotice(
+      policy === 'seller'
+        ? 'Applied Free Shipping to all listings'
+        : 'Applied Buyer Pays Shipping to all listings'
+    );
+  };
+
+  const handleSetAllReturns = (acceptsReturns: boolean) => {
+    if (!onBatchUpdateListings) return;
+    onBatchUpdateListings((prev) =>
+      prev.map((l) => ({
+        ...l,
+        acceptsReturns,
+        updatedAt: new Date(),
+      }))
+    );
+    showNotice(
+      acceptsReturns
+        ? 'Applied 30-Day Returns to all listings'
+        : 'Applied No Returns to all listings'
+    );
+  };
 
   const getListing = (groupId: string) => listings.find((l) => l.groupId === groupId);
 
@@ -204,6 +283,114 @@ export function PhotoGroupDisplay({
           )}
         </div>
       </div>
+
+      {/* Batch controls toolbar */}
+      {readyGroups.length > 0 && onBatchUpdateListings && (
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              Batch Actions ({readyGroups.length} items)
+            </span>
+            {batchNotice && (
+              <span className="text-xs text-emerald-700 font-semibold animate-fade-in">
+                ✓ {batchNotice}
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+            {/* Bulk Pricing */}
+            <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                Bulk Pricing
+              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustPrices(0.05, 'Bumped all prices +5%')}
+                  className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs"
+                  title="Increase all listing prices by 5%"
+                >
+                  +5%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustPrices(-0.05, 'Reduced all prices -5%')}
+                  className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs"
+                  title="Reduce all listing prices by 5%"
+                >
+                  -5%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAdjustPrices(-0.10, 'Reduced all prices -10%')}
+                  className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs"
+                  title="Reduce all listing prices by 10%"
+                >
+                  -10%
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSnapToCompMedian}
+                  className="px-2.5 py-1 text-xs font-semibold bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg text-blue-900 transition-all shadow-2xs"
+                  title="Set all item prices to their eBay comp median"
+                >
+                  Snap to Median
+                </button>
+              </div>
+            </div>
+
+            {/* Bulk Shipping */}
+            <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                Bulk Shipping Policy
+              </label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleSetAllShipping('buyer')}
+                  className="flex-1 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs truncate"
+                >
+                  Buyer Pays
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetAllShipping('seller')}
+                  className="flex-1 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs truncate"
+                >
+                  Free Shipping
+                </button>
+              </div>
+            </div>
+
+            {/* Bulk Returns */}
+            <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                Bulk Return Policy
+              </label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleSetAllReturns(true)}
+                  className="flex-1 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs truncate"
+                >
+                  30-Day Returns
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetAllReturns(false)}
+                  className="flex-1 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 hover:border-slate-400 hover:bg-slate-100 rounded-lg text-slate-800 transition-all shadow-2xs truncate"
+                >
+                  No Returns
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ready listings grid */}
       <div className="grid gap-4">

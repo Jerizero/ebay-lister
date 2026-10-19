@@ -316,6 +316,13 @@ export function useGrouping(callbacks: GroupingCallbacks) {
     );
   }, []);
 
+  const batchUpdateListings = useCallback(
+    (updater: (prev: Listing[]) => Listing[]) => {
+      setListings((prev) => updater(prev));
+    },
+    []
+  );
+
   const markSubmitted = useCallback(
     (id: string, offerId?: string, sku?: string) => {
       setListings((prev) =>
@@ -359,6 +366,7 @@ export function useGrouping(callbacks: GroupingCallbacks) {
     generateListingsForGroups,
     refreshListingComps,
     updateListing,
+    batchUpdateListings,
     markSubmitted,
     restoreGroupingState,
     resetGroups,

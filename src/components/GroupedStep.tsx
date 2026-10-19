@@ -12,6 +12,7 @@ interface GroupedStepProps {
   onEditGroups: () => void;
   onSaveDrafts: () => void;
   onListingChange: (listing: Listing) => void;
+  onBatchUpdateListings?: (updater: (prev: Listing[]) => Listing[]) => void;
   onSubmitListing: (listing: Listing) => void;
   onRefreshComps: (listingId: string, query: string) => void;
 }
@@ -25,6 +26,7 @@ export function GroupedStep({
   onEditGroups,
   onSaveDrafts,
   onListingChange,
+  onBatchUpdateListings,
   onSubmitListing,
   onRefreshComps,
 }: GroupedStepProps) {
@@ -48,6 +50,7 @@ export function GroupedStep({
         onEditGroups={onEditGroups}
         onSaveDrafts={onSaveDrafts}
         onListingChange={onListingChange}
+        onBatchUpdateListings={onBatchUpdateListings}
         onSubmitListing={onSubmitListing}
         onRefreshComps={onRefreshComps}
         submittingId={submittingId}

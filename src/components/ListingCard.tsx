@@ -25,6 +25,64 @@ interface ListingCardProps {
   onRefreshComps?: (listingId: string, query: string) => void;
 }
 
+import { computePhotoSignature } from '@/lib/utils';
+
+export interface SpecificsAudit {
+  required: string[];
+  filledCount: number;
+  totalCount: number;
+  missing: string[];
+  isComplete: boolean;
+}
+
+export function auditListingSpecifics(listing: Listing): SpecificsAudit {
+  const categoryLower = (listing.category || '').toLowerCase();
+  const titleLower = (listing.title || '').toLowerCase();
+
+  let required = ['Brand', 'Type', 'Color', 'Condition'];
+
+  if (
+    categoryLower.includes('shoe') ||
+    categoryLower.includes('sneaker') ||
+    categoryLower.includes('boot') ||
+    titleLower.includes('shoe') ||
+    titleLower.includes('sneaker')
+  ) {
+    required = ['Brand', 'US Shoe Size', 'Department', 'Color', 'Style'];
+  } else if (
+    categoryLower.includes('cloth') ||
+    categoryLower.includes('pant') ||
+    categoryLower.includes('jean') ||
+    categoryLower.includes('shirt') ||
+    categoryLower.includes('jacket') ||
+    categoryLower.includes('dress') ||
+    categoryLower.includes('hoodie') ||
+    categoryLower.includes('sweater')
+  ) {
+    required = ['Brand', 'Size', 'Size Type', 'Department', 'Color', 'Material'];
+  }
+
+  const existingKeysNormalized = Object.keys(listing.itemSpecifics || {}).map((k) =>
+    k.toLowerCase().replace(/[^a-z0-9]/g, '')
+  );
+
+  const missing = required.filter((req) => {
+    const reqNorm = req.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return !existingKeysNormalized.some(
+      (k) => k === reqNorm || k.includes(reqNorm) || reqNorm.includes(k)
+    );
+  });
+
+  const filledCount = required.length - missing.length;
+  return {
+    required,
+    filledCount,
+    totalCount: required.length,
+    missing,
+    isComplete: missing.length === 0,
+  };
+}
+
 export function ListingCard({
   group,
   listing,
@@ -40,6 +98,24 @@ export function ListingCard({
 }: ListingCardProps) {
   const [newSpecKey, setNewSpecKey] = useState('');
   const [newSpecVal, setNewSpecVal] = useState('');
+
+  const currentPhotos = listing.photos && listing.photos.length > 0 ? listing.photos : group.photos;
+  const specificsAudit = auditListingSpecifics(listing);
+
+  const handleSetCoverPhoto = (photoId: string) => {
+    const targetIdx = currentPhotos.findIndex((p) => p.id === photoId);
+    if (targetIdx <= 0) return;
+    const reordered = [
+      currentPhotos[targetIdx],
+      ...currentPhotos.filter((_, idx) => idx !== targetIdx),
+    ];
+    onListingChange?.({
+      ...listing,
+      photos: reordered,
+      photoSignature: computePhotoSignature(reordered),
+      updatedAt: new Date(),
+    });
+  };
 
   const conditionStyle =
     CONDITIONS.find((c) => c.value === listing.condition)?.color ||
@@ -92,7 +168,7 @@ export function ListingCard({
           {/* Photo stack preview */}
           <div className="relative flex-shrink-0">
             <div className="relative w-24 h-24">
-              {group.photos.slice(0, 3).map((photo, i) => (
+              {currentPhotos.slice(0, 3).map((photo, i) => (
                 <div
                   key={photo.id}
                   className="absolute rounded-xl overflow-hidden bg-slate-100 shadow border-2 border-white"
@@ -114,9 +190,9 @@ export function ListingCard({
                 </div>
               ))}
             </div>
-            {group.photos.length > 3 && (
+            {currentPhotos.length > 3 && (
               <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white text-xs font-medium px-2 py-0.5 rounded-full">
-                +{group.photos.length - 3}
+                +{currentPhotos.length - 3}
               </span>
             )}
           </div>
@@ -170,7 +246,7 @@ export function ListingCard({
 
             {/* Quick metadata bar */}
             <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-slate-500">
-              <span>{group.photos.length} photos</span>
+              <span>{currentPhotos.length} photos</span>
               <span>
                 Category: <strong className="text-slate-700">{listing.category.split(' > ').pop()}</strong>
                 {listing.categoryId && ` (#${listing.categoryId})`}
@@ -180,6 +256,23 @@ export function ListingCard({
                   {comps.source === 'ai_estimate'
                     ? 'AI price estimate'
                     : `${comps.count} eBay comps (median $${comps.medianPrice.toFixed(2)})`}
+                </span>
+              )}
+              {specificsAudit.isComplete ? (
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {specificsAudit.filledCount}/{specificsAudit.totalCount} Specifics
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-amber-800 font-medium">
+                  <span>{specificsAudit.filledCount}/{specificsAudit.totalCount} Specifics</span>
+                  {specificsAudit.missing.length > 0 && (
+                    <span className="text-amber-600">
+                      (Missing {specificsAudit.missing.slice(0, 2).join(', ')})
+                    </span>
+                  )}
                 </span>
               )}
               {tips.length > 0 && (
@@ -231,21 +324,52 @@ export function ListingCard({
             )}
 
             {/* Photos strip */}
-            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
-              {group.photos.map((photo) => (
-                <div
-                  key={photo.id}
-                  className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200"
-                >
-                  <Image
-                    src={photo.url}
-                    alt=""
-                    fill
-                    className="object-cover"
-                    sizes="80px"
-                  />
-                </div>
-              ))}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                  Photos ({currentPhotos.length})
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Photo #1 is your eBay cover image. Click &quot;Make Cover&quot; on any photo to set it as primary.
+                </span>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+                {currentPhotos.map((photo, pIdx) => (
+                  <div
+                    key={photo.id}
+                    className={`relative aspect-square rounded-xl overflow-hidden bg-slate-100 border-2 transition-all group/thumb ${
+                      pIdx === 0
+                        ? 'border-blue-600 ring-2 ring-blue-100 shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <Image
+                      src={photo.url}
+                      alt=""
+                      fill
+                      className="object-cover"
+                      sizes="80px"
+                    />
+                    {pIdx === 0 ? (
+                      <span className="absolute top-1 left-1 bg-slate-900/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                        ★ Cover
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSetCoverPhoto(photo.id);
+                        }}
+                        className="absolute bottom-1 inset-x-1 bg-white/95 hover:bg-white text-slate-800 text-[10px] font-bold py-1 rounded shadow-sm opacity-90 sm:opacity-0 sm:group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center gap-1 border border-slate-200"
+                        title="Set as primary eBay search cover photo"
+                      >
+                        ★ Cover
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Market Comps Panel */}
@@ -402,9 +526,35 @@ export function ListingCard({
 
               {/* Item Specifics */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
-                  Item Specifics (eBay Required Aspects)
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                    Item Specifics (eBay Required Aspects)
+                  </label>
+                  <span
+                    className={`text-xs font-semibold ${
+                      specificsAudit.isComplete ? 'text-emerald-700' : 'text-amber-800'
+                    }`}
+                  >
+                    {specificsAudit.filledCount} of {specificsAudit.totalCount} core aspects filled
+                  </span>
+                </div>
+
+                {specificsAudit.missing.length > 0 && (
+                  <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-amber-900 font-semibold">Recommended to add:</span>
+                    {specificsAudit.missing.map((aspect) => (
+                      <button
+                        key={aspect}
+                        type="button"
+                        onClick={() => setNewSpecKey(aspect)}
+                        className="px-2 py-0.5 text-xs font-medium rounded-lg bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 hover:border-amber-400 transition-all shadow-2xs"
+                        title={`Click to fill in ${aspect}`}
+                      >
+                        + {aspect}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {Object.entries(listing.itemSpecifics).map(([key, value]) => (
                     <div key={key} className="relative">

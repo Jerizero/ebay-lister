@@ -13,6 +13,7 @@ export interface EbayTokenRecord {
   refresh_token: string;
   expires_at: string;
   updated_at: string;
+  environment?: 'sandbox' | 'production';
 }
 
 // Market Comps Types

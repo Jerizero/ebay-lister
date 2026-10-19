@@ -1,12 +1,12 @@
 {
   "project": "ebay-lister",
   "description": "AI-powered bulk eBay listing creation using Gemini Vision, real eBay comps, and direct EPS draft submission",
-  "lastUpdated": "2026-10-18",
+  "lastUpdated": "2026-10-19",
   "currentState": "production-overhaul-complete",
   "recentWork": {
-    "session": "2026-10-18",
-    "summary": "Complete project audit and overhaul: Two-stage grouping pipeline, real eBay market comps, eBay Picture Services upload, IndexedDB draft persistence, and Vitest test suite",
-    "linearIssue": "JER-80",
+    "session": "2026-10-19",
+    "summary": "Seller productivity enhancements: Bulk batch controls (+/- 5%, -10%, snap to median, shipping/return policies), 1-click cover photo selector, eBay specifics completeness audit, and Production/Sandbox switcher",
+    "linearIssues": ["JER-80", "JER-81"],
     "changesCompleted": [
       "Phase 1: Two-Stage Listing Pipeline (Stage 1 AI grouping -> Stage 2 Group review/edit gate -> Stage 3 Comps & listing generation)",
       "Phase 2: Real eBay Comps Engine via eBay Browse API + fallback scraper with outlier-trimmed pricing",
@@ -14,44 +14,50 @@
       "Phase 4: eBay Commerce Taxonomy leaf category resolution and seller business policies integration",
       "Phase 5: Client-side IndexedDB persistence for photos, groups, and listings across page refreshes",
       "Phase 6: Extracted ListingCard component from monolithic PhotoGroupDisplay and resolved all ESLint warnings (0 errors, 0 warnings)",
-      "Phase 7: Added Vitest test suite with 8 unit tests covering pricing, grouping normalization, dirty-group diffing, and taxonomy resolution",
-      "Phase 8: Design-eval audit passing 10/10 with crisp 3-step pipeline header and no AI slop"
+      "Phase 7: Added Vitest test suite with 11 unit tests covering pricing, grouping normalization, dirty-group diffing, taxonomy resolution, and specifics audits",
+      "Phase 8: Design-eval audit passing 10/10 with crisp 3-step pipeline header and no AI slop",
+      "Phase 9: Bulk batch adjustments in PhotoGroupDisplay (bulk price shifts, snap to comp median, bulk shipping policy, bulk return policy)",
+      "Phase 10: 1-click cover photo selector in ListingCard with instant hero thumbnail update",
+      "Phase 11: eBay item specifics completeness audit with live aspect counter and 1-click quick-add chips",
+      "Phase 12: Production eBay environment switcher modal in EbayStatus with token expiry and configuration guidance"
     ],
     "verificationResults": {
-      "vitestTests": "8 of 8 passed",
+      "vitestTests": "11 of 11 passed",
       "eslint": "0 errors, 0 warnings",
       "nextBuild": "11 of 11 routes compiled successfully",
       "designEvalScore": "10 of 10"
     }
   },
   "architecture": {
-    "page.tsx": "Two-stage pipeline state machine hydrating from IndexedDB with dirty-group regeneration",
+    "page.tsx": "Two-stage pipeline state machine hydrating from IndexedDB with dirty-group regeneration and batch updates",
     "hooks": {
       "useProgress": "Centralized progress state (isActive, message, current/total)",
       "usePhotos": "Photo array backed by IndexedDB Blobs and object URLs with unmount cleanup",
-      "useGrouping": "Two-stage workflow hook: startGrouping -> generateListingsForGroups -> refreshListingComps",
+      "useGrouping": "Two-stage workflow hook: startGrouping -> generateListingsForGroups -> refreshListingComps + batchUpdateListings",
       "useGroupEditing": "Group editing state machine (split, merge, modify photo membership)",
       "useEbaySubmission": "eBay submission with EPS photo upload and draft creation"
     },
     "components": {
       "AppHeader": "3-stage pipeline visual stepper with eBay connection status pill and auto-saved badge",
+      "EbayStatus": "Active environment pill (Live vs Sandbox) with production setup guidance modal",
       "UploadStep": "Unified drag-and-drop zone with HEIC support and capability overview",
       "GroupEditor": "Stage 2 confirmation screen with photo reordering and group splitting/merging",
-      "PhotoGroupDisplay": "Stage 3 listings container with batch value calculation and Seller Hub CSV export",
-      "ListingCard": "Modular listing item card with market comps provenance and live price refresh"
+      "PhotoGroupDisplay": "Stage 3 listings container with Batch Actions toolbar and Seller Hub CSV export",
+      "ListingCard": "Modular listing item card with 1-click cover photo selector, specifics completeness audit, and live price refresh"
     },
     "lib": {
       "storage/draftStore.ts": "IndexedDB store for draft recovery and offline resilience",
       "ebay/comps.ts": "eBay Browse API comp search and outlier-trimmed pricing stats",
       "ebay/images.ts": "UploadSiteHostedPictures EPS integration",
       "ebay/client.ts": "Commerce Taxonomy API leaf lookup and Account policy resolution",
+      "ebay/oauth.ts": "OAuth token lifecycle with environment scoping and Trading API scopes",
       "logger.ts": "Structured millisecond lifecycle logger flushing to logs/ebay-lister.log"
     }
   },
   "techStack": {
     "framework": "Next.js 16.1.1 (Turbopack)",
     "react": "19.2.3",
-    "ai": "@google/generative-ai with gemini-3.1-pro-preview / gemini-3.7-flash fallback",
+    "ai": "@google/generative-ai with gemini-3.7-flash (configured in .env.local)",
     "styling": "Tailwind CSS 4",
     "storage": "Browser IndexedDB",
     "testing": "Vitest 4.1.12",
